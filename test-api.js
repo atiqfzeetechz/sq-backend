@@ -31,17 +31,22 @@ async function testAPI() {
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          name: 'John Doe',
-          email: 'john@example.com',
-          phone: '1234567890'
+          customerName: 'John Doe Hospital',
+          zone: 'North Zone',
+          state: 'Delhi',
+          installationDate: '2024-01-15',
+          workload: 'High',
+          serialNumber: 'SN001234',
+          instrument: 'Pentra C200'
         })
       });
       const customerData = await customerResponse.json();
       console.log('Customer Response:', customerData);
 
-      if (customerData._id) {
+      if (customerData.customer && customerData.customer._id) {
         // Test Add Test
         console.log('\n3. Testing Add Test...');
+        const today = new Date().toISOString().split('T')[0];
         const testResponse = await fetch(`${BASE_URL}/tests`, {
           method: 'POST',
           headers: {
@@ -49,10 +54,14 @@ async function testAPI() {
             'Authorization': `Bearer ${token}`
           },
           body: JSON.stringify({
-            testName: 'Blood Test',
-            testType: 'Laboratory',
-            result: 'Normal',
-            customerId: customerData._id
+            serialNumber: 'SN001234',
+            fromDate: today,
+            toDate: today,
+            ALB: 4.2,
+            ALP: 85,
+            ALT: 25,
+            remarks: 'Test results within normal range',
+            customTestParam: 15.5
           })
         });
         const testData = await testResponse.json();
@@ -74,6 +83,14 @@ async function testAPI() {
       });
       const allTests = await allTestsResponse.json();
       console.log('All Tests:', allTests);
+
+      // Get Dashboard Stats
+      console.log('\n6. Getting Dashboard Stats...');
+      const statsResponse = await fetch(`${BASE_URL}/dashboard/stats`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const stats = await statsResponse.json();
+      console.log('Dashboard Stats:', stats);
     }
 
   } catch (error) {
