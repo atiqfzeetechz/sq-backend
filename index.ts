@@ -37,9 +37,8 @@ const customerSchema = new mongoose.Schema({
 // Test Schema
 const testSchema = new mongoose.Schema({
   serialNumber: { type: String, required: true },
-  fromDate: { type: String, required: true },
-  toDate: { type: String, required: true },
-  numberOfDays: { type: Number, required: true },
+  startDate: { type: String, required: true },
+  endDate: { type: String, required: true },
   ALB: { type: Number },
   ALP: { type: Number },
   ALT: { type: Number },
@@ -99,7 +98,7 @@ const updateCustomerWorkload = async (customerId: any, userId: any) => {
     
     tests.forEach(test => {
       // Calculate sum of all numeric parameters (excluding system fields)
-      const excludeFields = ['_id', 'serialNumber', 'fromDate', 'toDate', 'numberOfDays', 'remarks', 'customerId', 'userId', '__v', 'createdAt', 'updatedAt'];
+      const excludeFields = ['_id', 'serialNumber', 'startDate', 'endDate', 'remarks', 'customerId', 'userId', '__v', 'createdAt', 'updatedAt'];
       let testParamSum = 0;
       
       Object.keys(test.toObject()).forEach(key => {
@@ -112,7 +111,11 @@ const updateCustomerWorkload = async (customerId: any, userId: any) => {
       });
       
       totalParamSum += testParamSum;
-      totalDays += test.numberOfDays || 1;
+      // Calculate days from startDate and endDate
+      const start = new Date(test.startDate);
+      const end = new Date(test.endDate);
+      const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      totalDays += daysDiff || 1;
     });
     
     // Calculate workload: sum of total params value / total days
@@ -188,9 +191,8 @@ app.post('/api/customers', auth, async (req, res) => {
     const today = new Date().toISOString().split('T')[0];
     const testTemplate = new Test({
       serialNumber,
-      fromDate: today,
-      toDate: today,
-      numberOfDays: 1,
+      startDate: today,
+      endDate: today,
       customerId: customer._id,
       userId: req.userId
     });
@@ -250,11 +252,11 @@ app.post('/api/tests', auth, async (req, res) => {
       return res.status(400).json({ error: 'Customer not found with this serial number' });
     }
     
-    // Check if test with same serial number, fromDate, and toDate exists
+    // Check if test with same serial number, startDate, and endDate exists
     const existingTest = await Test.findOne({ 
       serialNumber: testData.serialNumber,
-      fromDate: testData.fromDate,
-      toDate: testData.toDate,
+      startDate: testData.startDate,
+      endDate: testData.endDate,
       userId: req.userId 
     });
     
