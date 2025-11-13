@@ -32,7 +32,7 @@ const customerSchema = new mongoose.Schema({
   serialNumber: { type: String, required: true, unique: true },
   instrument: { type: String, required: true },
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }
-});
+}, { timestamps: true });
 
 // Test Schema
 const testSchema = new mongoose.Schema({
@@ -60,7 +60,7 @@ const testSchema = new mongoose.Schema({
   UREA: { type: Number, default: 0 },
   customerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer', required: true },
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }
-});
+}, { timestamps: true });
 
 const User = mongoose.model('User', userSchema);
 const Customer = mongoose.model('Customer', customerSchema);
@@ -122,12 +122,22 @@ app.post('/api/login', async (req, res) => {
 // Add Customer
 app.post('/api/customers', auth, async (req, res) => {
   try {
+    console.log('Creating customer with data:', req.body);
     const { customerName, zone, state, installationDate, workload, serialNumber, instrument } = req.body;
+    
+    // Check if serial number already exists
+    const existingCustomer = await Customer.findOne({ serialNumber });
+    if (existingCustomer) {
+      console.log('Duplicate serial number found:', serialNumber);
+      return res.status(400).json({ error: 'Serial number already exists' });
+    }
+    
     const customer = new Customer({ 
       customerName, zone, state, installationDate, workload, serialNumber, instrument, 
       userId: req.userId 
     });
     await customer.save();
+    console.log('Customer created successfully:', customer._id);
     
     // Auto-create test template with 0 values
     const testTemplate = new Test({
@@ -137,10 +147,16 @@ app.post('/api/customers', auth, async (req, res) => {
       userId: req.userId
     });
     await testTemplate.save();
+    console.log('Test template created:', testTemplate._id);
     
     res.json({ customer, testTemplate });
-  } catch (error) {
-    res.status(500).json({ error: 'Server error' });
+  } catch (error: any) {
+    console.error('Customer creation error:', error);
+    if (error.code === 11000) {
+      console.log('MongoDB duplicate key error');
+      return res.status(400).json({ error: 'Serial number already exists' });
+    }
+    res.status(500).json({ error: 'Failed to create customer' });
   }
 });
 
@@ -158,6 +174,17 @@ app.get('/api/customers', auth, async (req, res) => {
 app.post('/api/tests', auth, async (req, res) => {
   try {
     const testData = req.body;
+    
+    // Find customer by serial number to get customerId
+    const customer = await Customer.findOne({ 
+      serialNumber: testData.serialNumber, 
+      userId: req.userId 
+    });
+    
+    if (!customer) {
+      return res.status(400).json({ error: 'Customer not found with this serial number' });
+    }
+    
     const existingTest = await Test.findOne({ 
       serialNumber: testData.serialNumber, 
       userId: req.userId 
@@ -165,23 +192,29 @@ app.post('/api/tests', auth, async (req, res) => {
     
     if (existingTest) {
       Object.assign(existingTest, testData);
+      existingTest.customerId = customer._id;
       await existingTest.save();
       res.json(existingTest);
     } else {
-      const test = new Test({ ...testData, userId: req.userId });
+      const test = new Test({ 
+        ...testData, 
+        customerId: customer._id,
+        userId: req.userId 
+      });
       await test.save();
       res.json(test);
     }
-  } catch (error) {
-    res.status(500).json({ error: 'Server error' });
+  } catch (error: any) {
+    console.error('Test creation error:', error);
+    res.status(500).json({ error: 'Failed to save test data' });
   }
 });
 
-// Get Tests for a Customer
-app.get('/api/tests/:customerId', auth, async (req, res) => {
+// Get Tests by Serial Number
+app.get('/api/tests/serial/:serialNumber', auth, async (req, res) => {
   try {
     const tests = await Test.find({ 
-      customerId: req.params.customerId, 
+      serialNumber: req.params.serialNumber, 
       userId: req.userId 
     });
     res.json(tests);
@@ -193,8 +226,64 @@ app.get('/api/tests/:customerId', auth, async (req, res) => {
 // Get All Tests
 app.get('/api/tests', auth, async (req, res) => {
   try {
-    const tests = await Test.find({ userId: req.userId }).populate('customerId', 'name email');
+    const tests = await Test.find({ userId: req.userId }).populate('customerId', 'customerName serialNumber');
     res.json(tests);
+  } catch (error) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Update Test
+app.put('/api/tests/:id', auth, async (req, res) => {
+  try {
+    const test = await Test.findOneAndUpdate(
+      { _id: req.params.id, userId: req.userId },
+      req.body,
+      { new: true }
+    );
+    if (!test) return res.status(404).json({ error: 'Test not found' });
+    res.json(test);
+  } catch (error: any) {
+    console.error('Test update error:', error);
+    res.status(500).json({ error: 'Failed to update test' });
+  }
+});
+
+// Delete Test
+app.delete('/api/tests/:id', auth, async (req, res) => {
+  try {
+    const test = await Test.findOneAndDelete({ _id: req.params.id, userId: req.userId });
+    if (!test) return res.status(404).json({ error: 'Test not found' });
+    res.json({ message: 'Test deleted successfully' });
+  } catch (error: any) {
+    console.error('Test deletion error:', error);
+    res.status(500).json({ error: 'Failed to delete test' });
+  }
+});
+
+// Dashboard Stats
+app.get('/api/dashboard/stats', auth, async (req, res) => {
+  try {
+    const totalCustomers = await Customer.countDocuments({ userId: req.userId });
+    const totalTests = await Test.countDocuments({ userId: req.userId });
+    
+    const today = new Date();
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+    
+    const testsToday = await Test.countDocuments({
+      userId: req.userId,
+      createdAt: { $gte: todayStart, $lt: todayEnd }
+    });
+    
+    const pendingReports = Math.floor(totalTests * 0.1); // 10% as pending
+    
+    res.json({
+      totalCustomers,
+      totalTests,
+      testsToday,
+      pendingReports
+    });
   } catch (error) {
     res.status(500).json({ error: 'Server error' });
   }
