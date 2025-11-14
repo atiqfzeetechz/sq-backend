@@ -88,6 +88,10 @@ const updateCustomerWorkload = async (customerId: any, userId: any) => {
     // Get all tests for this customer
     const tests = await Test.find({ customerId, userId });
     
+    console.log(`\n=== WORKLOAD CALCULATION DEBUG ===`);
+    console.log(`Customer ID: ${customerId}`);
+    console.log(`Total tests found: ${tests.length}`);
+    
     if (tests.length === 0) {
       await Customer.findByIdAndUpdate(customerId, { workload: 0 });
       return;
@@ -96,7 +100,12 @@ const updateCustomerWorkload = async (customerId: any, userId: any) => {
     let totalParamSum = 0;
     let totalDays = 0;
     
-    tests.forEach(test => {
+    tests.forEach((test, index) => {
+      console.log(`\n--- Test ${index + 1} ---`);
+      console.log(`Serial: ${test.serialNumber}`);
+      console.log(`Start Date: ${test.startDate}`);
+      console.log(`End Date: ${test.endDate}`);
+      
       // Calculate sum of all numeric parameters (excluding system fields)
       const excludeFields = ['_id', 'serialNumber', 'startDate', 'endDate', 'remarks', 'customerId', 'userId', '__v', 'createdAt', 'updatedAt'];
       let testParamSum = 0;
@@ -104,22 +113,34 @@ const updateCustomerWorkload = async (customerId: any, userId: any) => {
       Object.keys(test.toObject()).forEach(key => {
         if (!excludeFields.includes(key)) {
           const value = test[key];
-          if (typeof value === 'number' && !isNaN(value)) {
-            testParamSum += value;
+          const numValue = Number(value);
+          if (!isNaN(numValue) && value !== null && value !== undefined && value !== '') {
+            console.log(`${key}: ${value} (converted to ${numValue})`);
+            testParamSum += numValue;
           }
         }
       });
       
+      console.log(`Test Param Sum: ${testParamSum}`);
       totalParamSum += testParamSum;
+      
       // Calculate days from startDate and endDate
       const start = new Date(test.startDate);
       const end = new Date(test.endDate);
       const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      console.log(`Days for this test: ${daysDiff}`);
       totalDays += daysDiff || 1;
     });
     
+    console.log(`\n--- FINAL CALCULATION ---`);
+    console.log(`Total Param Sum: ${totalParamSum}`);
+    console.log(`Total Days: ${totalDays}`);
+    
     // Calculate workload: sum of total params value / total days
     const workload = totalDays > 0 ? (totalParamSum / totalDays) : 0;
+    console.log(`Workload: ${totalParamSum} / ${totalDays} = ${workload}`);
+    console.log(`Rounded Workload: ${Math.round(workload * 100) / 100}`);
+    console.log(`=== END DEBUG ===\n`);
     
     // Update customer workload
     await Customer.findByIdAndUpdate(customerId, { workload: Math.round(workload * 100) / 100 });
