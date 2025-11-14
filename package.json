@@ -4,8 +4,9 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "start": "bun run index.ts",
-    "dev": "bun --watch index.ts"
+    "start": "bun src/server.ts",
+    "dev": "bun --watch src/server.ts",
+    "build": "tsc"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
