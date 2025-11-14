@@ -5,7 +5,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
 const app = express();
-const PORT = 9011;
+const PORT = 9122;
 const JWT_SECRET = 'your-secret-key';
 
 // Middleware
