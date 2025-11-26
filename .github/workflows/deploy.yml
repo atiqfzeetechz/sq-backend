@@ -36,6 +36,8 @@ jobs:
             export NVM_DIR="$HOME/.nvm"
             source "$NVM_DIR/nvm.sh"
            
+            chown -R root:root /home/ubuntu/projects/testatiq/
+            
             npm install --force
 
             # Restart or start pm2
