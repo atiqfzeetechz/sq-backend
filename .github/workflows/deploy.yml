@@ -1,0 +1,45 @@
+name: sq-backend
+
+on:
+  push:
+    branches: ["main"]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      # 1️⃣ Upload files to server
+      - name: Upload Files To Server
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.PRIVATE_KEY }}
+          source: "./"
+          target: "/home/ubuntu/projects/testatiq/sq-backend"
+          rm: false
+
+      # 2️⃣ Run commands via SSH
+      - name: Deploy Application
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.PRIVATE_KEY }}
+          script: |
+            cd /home/ubuntu/projects/testatiq/sq-backend
+
+            # Load NVM and Node
+            export NVM_DIR="$HOME/.nvm"
+            source "$NVM_DIR/nvm.sh"
+           
+            npm install --force
+
+            # Restart or start pm2
+            pm2 restart 17 || pm2 start 17
+
+            sudo systemctl reload nginx
+            echo "🚀 Deployment Completed!"
